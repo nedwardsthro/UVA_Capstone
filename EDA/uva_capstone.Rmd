@@ -1,0 +1,174 @@
+```{r}
+library(tidyverse)
+library(readxl)
+read <- read_excel("Reading_Dataset_UVA_Deidentified_02-02-24.xlsx")
+math <- read_excel("Math_Dataset_UVA_Deidentified_02-12-24.xlsx")
+colnames(read) <- str_trim(colnames(read))
+colnames(math) <- str_trim(colnames(math))
+```
+
+```{r}
+combined <- bind_rows(
+  read %>% mutate(type = "Read") %>% rename(Growth = `Value Added Score`, `Type of Certification` = `Type of Teacher Certification`, `Year of Certification` = `Year of Teacher Certification`), 
+  math %>% mutate(type = "Math", `Vertical Scaled Score` = as.numeric(`Vertical Scaled Score`)))
+```
+```{r}
+teacher_years_race <- aov(`Teacher Years Experience` ~ as.factor(Race), data = combined)
+summary(teacher_years_race)
+
+growth_certification_any <- aov(Growth ~ as.factor(`Certified Teacher`), data = combined |> mutate(`Certified Teacher` = ifelse(`Certified Teacher` == "NA", "N", `Certified Teacher`)))
+summary(growth_certification_any)
+
+
+growth_certification <- aov(Growth ~ as.factor(`Type of Certification`), data = combined)
+summary(growth_certification)
+```
+
+```{r}
+combined %>%
+  group_by(type) %>% 
+  distinct(`Generated Unique Teacher ID`) %>% 
+  count(type)
+```
+
+```{r}
+combined %>% 
+  group_by(
+    `Teacher Race/Ethnicity`, Race
+  ) %>% 
+  summarize(
+    `Actual Achievement` = mean(`Actual Achievement`), 
+    `Actual Achievement Percentile` = mean(`Actual Achievement Percentile`),
+    `Vertical Scaled Score` = mean(`Vertical Scaled Score`, na.rm = TRUE),
+    n = n()
+  ) %>% 
+  filter(
+    n >= 10,
+    (`Teacher Race/Ethnicity`) != "NA"
+  ) %>% 
+  group_by(
+    Race
+  ) %>% 
+  mutate(
+    Student_Prop = n / sum(n), 
+  ) %>% 
+  view()
+```
+
+```{r}
+combined %>% 
+  group_by(
+    Race, `Type of Certification`
+  ) %>% 
+  summarize(
+    # Teacher_Experience = mean(`Teacher Years Experience`, na.rm = TRUE), 
+    # Teacher_Age = 2023 - mean(`Teacher Birth Year`, na.rm = TRUE),
+    Growth = mean(Growth, na.rm = TRUE),
+    n = n()
+    # `Actual Achievement` = mean(`Actual Achievement`), 
+    # `Actual Achievement Percentile` = mean(`Actual Achievement Percentile`),
+    # `Vertical Scaled Score` = mean(`Vertical Scaled Score`, na.rm = TRUE)
+  ) %>% 
+  group_by(
+    `Type of Certification`
+  ) %>% 
+  mutate(
+    Cert_Prop = n / sum(n)
+  ) %>% group_by(
+    Race
+  ) %>% 
+  mutate(
+    Expected_Prop = sum(n) / 7659
+  ) %>% ungroup() |> 
+  view()
+
+combined %>% 
+  group_by(
+    `Race`
+  ) %>% 
+  summarize(
+    Growth = mean(Growth, na.rm = TRUE), 
+    Teacher_Years = mean(`Teacher Years Experience`, na.rm = TRUE),
+    n = n()
+  ) 
+library(dplyr)
+library(purrr)
+library(broom)
+combined %>% 
+  group_by(
+    `Teacher Race/Ethnicity`
+  ) %>% 
+  count(Race) %>% 
+  ungroup() |> 
+  nest(data = c(Race, n)) |> 
+  mutate(tidy=map(data, ~tidy(pairwise.t.test(.$Race, .$n,
+                                   p.adjust.method = "BH")))) |> 
+  select(tidy) |> 
+  unnest(tidy)
+  
+df = combined |> filter(!is.na(`Teacher Years Experience`)) |> mutate(
+  Years = `Teacher Years Experience` + 1
+) 
+rstatix::anova_test(Years ~ Race, data = df)
+t.test(Race ~ `Teacher Years Experience`, data = combined)
+combined %>% 
+  ggplot(aes(x = `Teacher Years Experience`, y = Race)) +
+  # facet_grid(~Gender) +
+  geom_boxplot() 
+```
+
+```{r}
+combined %>% 
+  ggplot(aes(y = `Teacher Race/Ethnicity`, x = Growth)) +
+  geom_boxplot()
+```
+
+
+```{r}
+combined %>% 
+  ggplot(aes(x = `Growth`, y = as.factor(`Type of Certification`))) +
+  geom_boxplot() #+ 
+  geom_smooth(aes(group=`Certified Teacher`), method ="lm", se = F, fullrange = T, alpha = .15)
+```
+```{r}
+lm(data = combined, formula = Growth ~ `Certified Teacher`) %>% 
+  summary()
+```
+
+```{r}
+teachers <- combined %>% 
+  select(
+    `Generated Unique Teacher ID`, `Certified Teacher`, `Type of Certification`, `Year of Certification`, `Teacher License Type`, `Teacher Highest Degree`
+  ) %>% distinct()
+
+teachers %>% 
+  group_by(
+    `Type of Certification`
+  ) %>% 
+  count(`Teacher License Type`)
+```
+
+
+# Look for differences in test and level of the class
+
+```{r}
+combined %>% 
+  group_by(
+    Grade, `Test Name`
+  ) %>% 
+  summarize(
+    Growth = mean(Growth, na.rm = TRUE), 
+    `Vertical Scaled Score` = mean(`Vertical Scaled Score`, na.rm = TRUE),
+    n = n()
+  )
+```
+
+
+
+# Model Outline
+  - Gender of Teachers and Student (Interaction)
+  - Categorical Variable of Certification Type
+  - Grade?
+  - Student Race
+  - English Learner
+  - Student with Disabilities
