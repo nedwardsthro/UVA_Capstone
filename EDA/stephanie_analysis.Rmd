@@ -1,0 +1,477 @@
+---
+title: "stephanie_analysis"
+output: html_document
+date: "2024-04-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(tidyr)
+library(leaps)
+library(randomForest)
+library(datasets)
+library(caret)
+library(glmnet)
+library(ggpubr)
+library(car)
+library(FSA)
+library(ggstatsplot)
+```
+
+# Data Cleaning
+
+## Upload
+
+```{r}
+data <- read.csv("All_Data_UVA_Deidentified_04-08-24.csv",header=T)
+data_math <- read.csv("Math_Dataset_UVA_Deidentified_03-29-24.csv",header=T)
+data_read <- read.csv("Reading_Dataset_UVA_Deidentified_02-02-24.csv",header=T) 
+```
+
+## Clean
+
+```{r}
+data_read$Actual.Achievement <- as.integer(data_read$Actual.Achievement) 
+data_read$Growth <- as.integer(data_read$Value.Added.Score) 
+data_math$Actual.Achievement <- as.integer(data_math$Actual.Achievement)
+data_math$Growth <- as.integer(data_math$Growth)
+data$Actual.Achievement <- as.integer(data$Actual.Achievement)
+data$Growth <- as.integer(data$Growth)
+
+data_r <- data_read %>% 
+  mutate(Type.of.Teacher.Certification = fct_explicit_na(Type.of.Teacher.Certification, na_level = "NONE"))
+data_r <- data_r %>% 
+  mutate(Type.of.Principal.Certification = fct_explicit_na(Type.of.Principal.Certification, na_level = "NONE"))
+data_r$Year.of.Teacher.Certification <- factor(data_r$Year.of.Teacher.Certification)
+data_r <- data_r %>% 
+  mutate(Year.of.Teacher.Certification = fct_explicit_na(Year.of.Teacher.Certification, na_level = "Not applicable"))
+data_r$Type.of.Teacher.Certification <- factor(data_r$Type.of.Teacher.Certification,levels=c("NONE","MICRO","FULL"))
+
+data_m <- data_math %>% 
+  mutate(Type.of.Certification = fct_explicit_na(Type.of.Certification, na_level = "NONE"))
+data_m <- data_m %>% 
+  mutate(Type.of.Principal.Certification = fct_explicit_na(Type.of.Principal.Certification, na_level = "NONE"))
+data_m$Year.of.Certification <- factor(data_m$Year.of.Certification)
+data_m <- data_m %>% 
+  mutate(Year.of.Certification = fct_explicit_na(Year.of.Certification, na_level = "Not applicable"))
+data_m$Type.of.Certification <- factor(data_m$Type.of.Certification,levels=c("NONE","MICRO","FULL"))
+
+
+data_a <- data %>% 
+  mutate(Type.of.Certification = fct_explicit_na(Type.of.Certification, na_level = "NONE"))
+data_a <- data_a %>% 
+  mutate(Type.of.Principal.Certification = fct_explicit_na(Type.of.Principal.Certification, na_level = "NONE"))
+data_a$Year.of.Certification <- factor(data_a$Year.of.Certification)
+data_a <- data_a %>% 
+  mutate(Year.of.Certification = fct_explicit_na(Year.of.Certification, na_level = "Not applicable"))
+data_a$Type.of.Certification <- factor(data_a$Type.of.Certification,levels=c("NONE","MICRO","FULL"))
+```
+
+# Analysis
+
+## Teacher Certification Only - Growth
+
+### Reading
+
+#### Regression
+
+```{r}
+lm_teacher_cert_r <- lm(data_r$Growth~ data_r$Type.of.Teacher.Certification) 
+summary(lm_teacher_cert_r)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way <- aov(Growth ~ Type.of.Teacher.Certification, data = data_r)
+
+# are equal variances met?
+lev <- leveneTest(Growth ~ Type.of.Teacher.Certification, data = data_r)
+summary(lev)
+lev
+
+plot(one.way,1)
+
+# is normalcy met?
+plot(one.way,2)
+
+resids <- residuals(one.way)
+shapiro.test(resids)
+```
+
+Normal distribution not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Growth ~ Type.of.Teacher.Certification, data = data_r)
+```
+
+There are statistically significant differences. To determine which categories are different from each other, Dunn's Test is conducted.
+
+```{r}
+dunnTest(Growth ~ Type.of.Teacher.Certification, data = data_r, method="holm")
+```
+
+```{r}
+data_r$Type.of.Teacher.Certification <- factor(data_r$Type.of.Teacher.Certification,levels=c("FULL","MICRO","NONE"))
+ggbetweenstats(data=data_r,
+               x= Type.of.Teacher.Certification,
+               y=Growth,
+               title = "Effect of Teacher Certification on Growth",
+               subtitle = "Reading Dataset",
+               results.subtitle = FALSE,
+               type = "nonparametric",
+               plot.type = "box",
+               pairwise.comparisons = TRUE,
+               pairwise.display = "significant",
+               centrality.plotting = FALSE,
+               bf.message = FALSE,
+               ylab="Growth",
+               xlab="Teacher Certification Type")
+```
+
+### Mathematics
+
+#### Regression
+
+```{r}
+lm_teacher_cert_m <- lm(data_m$Growth~ data_m$Type.of.Certification) 
+summary(lm_teacher_cert_m)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way_m <- aov(Growth ~ Type.of.Certification, data = data_m)  
+# are equal variances met? 
+lev_m <- leveneTest(Growth ~ Type.of.Certification, data = data_m) 
+summary(lev_m) 
+lev_m  
+plot(one.way_m,1)  
+# is normalcy met? 
+plot(one.way_m,2)  
+resids_m <- residuals(one.way_m) 
+shapiro.test(resids_m)
+```
+
+Normal distribution not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Growth ~ Type.of.Certification, data = data_m)
+```
+
+There are statistically significant differences. To determine which categories are different from each other, Dunn's Test is conducted.
+
+```{r}
+dunnTest(Growth ~ Type.of.Certification, data = data_m, method="holm")
+```
+
+```{r}
+data_m$Type.of.Teacher.Certification <- factor(data_m$Type.of.Certification,levels=c("FULL","MICRO","NONE")) 
+
+ggbetweenstats(data=data_m,                
+               x= Type.of.Certification,                
+               y=Growth,                
+               title = "Effect of Teacher Certification on Growth",                
+               subtitle = "Reading Dataset",                
+               results.subtitle = FALSE,                
+               type = "nonparametric",                
+               plot.type = "box",                
+               pairwise.comparisons = TRUE,                
+               pairwise.display = "significant",                
+               centrality.plotting = FALSE,                
+               bf.message = FALSE,                
+               ylab="Growth",                
+               xlab="Teacher Certification Type")
+```
+
+### Full Dataset
+
+#### Regression
+
+```{r}
+lm_teacher_cert_a <- lm(data_a$Growth~ data_a$Type.of.Certification)  
+summary(lm_teacher_cert_a)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way_a <- aov(Growth ~ Type.of.Certification, data = data_a)   
+
+# are equal variances met?  
+lev_a <- leveneTest(Growth ~ Type.of.Certification, data = data_a)  
+summary(lev_a)  
+lev_a   
+plot(one.way_a,1)   
+# is normalcy met?  
+
+plot(one.way_a,2)   
+resids_a <- residuals(one.way_a)  
+shapiro.test(resids_a)
+```
+
+Normal distribution not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Growth ~ Type.of.Certification, data = data_a)
+```
+
+There are statistically significant differences. To determine which categories are different from each other, Dunn's Test is conducted.
+
+```{r}
+dunnTest(Growth ~ Type.of.Certification, data = data_a, method="holm")
+```
+
+```{r}
+data_a$Type.of.Certification <- factor(data_a$Type.of.Certification,levels=c("FULL","MICRO","NONE"))   
+ggbetweenstats(data=data_a,                                
+               x= Type.of.Certification,                                
+               y=Growth,                                
+               title = "Effect of Teacher Certification on Growth",               
+               subtitle = "Combined Dataset",                                
+               results.subtitle = FALSE,                                
+               type = "nonparametric",                                
+               plot.type = "box",                                
+               pairwise.comparisons = TRUE,                                
+               pairwise.display = "significant",                                
+               centrality.plotting = FALSE,                                
+               bf.message = FALSE,                                
+               ylab="Growth",                                
+               xlab="Teacher Certification Type")
+```
+
+## Teacher Certification Only - Actual Achievement
+
+### Reading
+
+#### Regression
+
+```{r}
+lm_teacher_cert_ra <- lm(data_r$Actual.Achievement~ data_r$Type.of.Teacher.Certification)  
+summary(lm_teacher_cert_ra)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way_ra <- aov(Actual.Achievement ~ Type.of.Teacher.Certification, data = data_r)  
+# are equal variances met? 
+lev_ra <- leveneTest(Actual.Achievement ~ Type.of.Teacher.Certification, data = data_r) 
+summary(lev_ra) 
+lev_ra  
+plot(one.way_ra,1)  
+# is normalcy met? 
+plot(one.way_ra,2)  
+resids_ra <- residuals(one.way_ra) 
+shapiro.test(resids_ra)
+```
+
+Normal distribution not met, equal variance assumptions not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Actual.Achievement ~ Type.of.Teacher.Certification, data = data_r)
+```
+
+There are no statistically significant differences.
+
+```{r}
+dunnTest(Actual.Achievement ~ Type.of.Teacher.Certification, data = data_r, method="holm")
+```
+
+```{r}
+data_r$Type.of.Teacher.Certification <- factor(data_r$Type.of.Teacher.Certification,levels=c("FULL","MICRO","NONE")) 
+ggbetweenstats(data=data_r,                
+               x= Type.of.Teacher.Certification,                
+               y=Actual.Achievement,                
+               title = "Effect of Teacher Certification on Actual Achievement",                
+               subtitle = "Reading Dataset",                
+               results.subtitle = FALSE,                
+               type = "nonparametric",                
+               plot.type = "box",                
+               pairwise.comparisons = TRUE,                
+               pairwise.display = "significant",                
+               centrality.plotting = FALSE,                
+               bf.message = FALSE,                
+               ylab="Actual Achievement",                
+               xlab="Teacher Certification Type")
+```
+
+### Mathematics
+
+#### Regression
+
+```{r}
+lm_teacher_cert_ma <- lm(data_m$Actual.Achievement~ data_m$Type.of.Certification)  
+summary(lm_teacher_cert_ma)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way_ma <- aov(Actual.Achievement ~ Type.of.Certification, data = data_m)   
+# are equal variances met?  
+lev_ma <- leveneTest(Actual.Achievement ~ Type.of.Certification, data = data_m)  
+summary(lev_ma)  
+lev_ma   
+plot(one.way_ma,1)   
+# is normalcy met?  
+plot(one.way_ma,2)   
+resids_ma <- residuals(one.way_ma)  
+shapiro.test(resids_ma)
+```
+
+Normal distribution not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Actual.Achievement ~ Type.of.Certification, data = data_m)
+```
+
+There are statistically significant differences. To determine which categories are different from each other, Dunn's Test is conducted.
+
+```{r}
+dunnTest(Actual.Achievement ~ Type.of.Certification, data = data_m, method="holm")
+```
+
+```{r}
+data_m$Type.of.Teacher.Certification <- factor(data_m$Type.of.Certification,levels=c("FULL","MICRO","NONE"))   
+ggbetweenstats(data=data_m,                                
+               x= Type.of.Certification,                                
+               y=Actual.Achievement,                                
+               title = "Effect of Teacher Certification on Actual Achievement",                                
+               subtitle = "Math Dataset",                                
+               results.subtitle = FALSE,                                
+               type = "nonparametric",                                
+               plot.type = "box",                                
+               pairwise.comparisons = TRUE,                                
+               pairwise.display = "significant",                                
+               centrality.plotting = FALSE,                                
+               bf.message = FALSE,                                
+               ylab="Actual Achievement",                                
+               xlab="Teacher Certification Type")
+```
+
+### Full Dataset
+
+#### Regression
+
+```{r}
+lm_teacher_cert_aa <- lm(data_a$Actual.Achievement~ data_a$Type.of.Certification)   
+summary(lm_teacher_cert_aa)
+```
+
+#### ANOVA - Assumption Tests
+
+```{r}
+one.way_aa <- aov(Actual.Achievement ~ Type.of.Certification, data = data_a)     
+
+# are equal variances met?   
+lev_aa <- leveneTest(Actual.Achievement ~ Type.of.Certification, data = data_a)   
+summary(lev_aa)   
+lev_aa    
+plot(one.way_aa,1)    
+
+# is normalcy met?    
+plot(one.way_aa,2)    
+resids_aa <- residuals(one.way_aa)   
+shapiro.test(resids_aa)
+```
+
+Normal distribution not met.
+
+#### Kruskal-Wallis Test
+
+```{r}
+kruskal.test(Actual.Achievement ~ Type.of.Certification, data = data_a)
+```
+
+There are statistically significant differences. To determine which categories are different from each other, Dunn's Test is conducted.
+
+```{r}
+dunnTest(Actual.Achievement ~ Type.of.Certification, data = data_a, method="holm")
+```
+
+```{r}
+data_a$Type.of.Certification <- factor(data_a$Type.of.Certification,levels=c("FULL","MICRO","NONE"))    
+ggbetweenstats(data=data_a,                                                
+               x= Type.of.Certification,                                                
+               y=Actual.Achievement,                                                
+               title = "Effect of Teacher Certification on Actual Achievement",                               
+               subtitle = "Combined Dataset",                                                
+               results.subtitle = FALSE,                                                
+               type = "nonparametric",                                                
+               plot.type = "box",                                                
+               pairwise.comparisons = TRUE,                                                
+               pairwise.display = "significant",                                                
+               centrality.plotting = FALSE,                                                
+               bf.message = FALSE,                                                
+               ylab="Actual Achievement",                                                
+               xlab="Teacher Certification Type")
+```
+
+# All Predictors
+
+## Growth
+
+```{r}
+reduced_a <- select(data_a,-TestTest,-Test.Name.,-Generated.Unique.Teacher.ID,-Expected.Achievement,-Actual.Achievement,-Vertical.Scaled.Score.,-Actual.Achievement.Percentile,-Compacted.Math,-Grade)
+reduced_aa <- select(data_a,-TestTest,-Test.Name.,-Generated.Unique.Teacher.ID,-Expected.Achievement,-Growth,-Vertical.Scaled.Score.,-Actual.Achievement.Percentile,-Compacted.Math,-Grade)
+
+reduced_m <- select(data_m,Race,Gender,English.Learner,Students.with.Disabilities,Grade,Certified.Principal,Type.of.Principal.Certification,Teacher.License.Type,Teacher.Years.Experience,Teacher.Highest.Degree,Teacher.Birth.Year,Teacher.Gender,Teacher.Race.Ethnicity,Certified.Teacher,Type.of.Certification,Year.of.Certification,Growth)
+reduced_ma <- select(data_m,Race,Gender,English.Learner,Students.with.Disabilities,Grade,Certified.Principal,Type.of.Principal.Certification,Teacher.License.Type,Teacher.Years.Experience,Teacher.Highest.Degree,Teacher.Birth.Year,Teacher.Gender,Teacher.Race.Ethnicity,Certified.Teacher,Type.of.Certification,Year.of.Certification,Actual.Achievement)
+
+reduced_r <- select(data_r,-Test.Name.,-Generated.Unique.Teacher.ID,-Expected.Achievement,-Actual.Achievement,-Vertical.Scaled.Score.,-Actual.Achievement.Percentile,-Grade, -Generated.Unique.Student.ID, -Value.Added.Score)
+reduced_ra <- select(data_r,-Test.Name.,-Generated.Unique.Teacher.ID,-Expected.Achievement,-Growth,-Vertical.Scaled.Score.,-Actual.Achievement.Percentile,-Grade, -Generated.Unique.Student.ID, -Value.Added.Score)
+```
+
+### Stepwise
+
+#### All
+
+```{r}
+reduced_a_nona <- na.omit(reduced_a)
+regnull_a <- lm(Growth ~ 1, data = reduced_a_nona)
+regfull_a <- lm(Growth~., data = reduced_a_nona)
+stepwise_lm_a <- step(regnull_a, scope = list(lower= regnull_a, upper=regfull_a), direction = "both")
+```
+
+```{r}
+summary(stepwise_lm_a)
+```
+
+#### Reading
+
+```{r}
+reduced_r_nona <- na.omit(reduced_r)
+regnull_r <- lm(Growth ~ 1, data = reduced_r_nona)
+regfull_r <- lm(Growth~., data = reduced_r_nona)
+stepwise_lm_r <- step(regnull_r, scope = list(lower= regnull_r, upper=regfull_r), direction = "both")
+```
+
+```{r}
+summary(stepwise_lm_r)
+```
+
+#### Math
+
+```{r}
+reduced_m_nona <- na.omit(reduced_m)
+regnull_m <- lm(Growth ~ 1, data = reduced_m_nona)
+regfull_m <- lm(Growth~., data = reduced_m_nona)
+stepwise_lm_m <- step(regnull_m, scope = list(lower= regnull_m, upper=regfull_m), direction = "both")
+```
+
+```{r}
+summary(stepwise_lm_m)
+```
