@@ -4,10 +4,12 @@ library(janitor)
 library(gt)
 library(patchwork)
 
-read <- read_excel("Data/Reading_Dataset_UVA_Deidentified_02-02-24.xlsx") |> clean_names()
+read <- read_excel("Data/Reading_Dataset_UVA_Deidentified_02-02-24.xlsx") |> clean_names() |> mutate(type = "Reading")
 math <- read_excel("Data/Math_Dataset_UVA_Deidentified_03-18-24.xlsx") |> clean_names() |> 
   mutate(
-    vertical_scaled_score = as.numeric(vertical_scaled_score)
+    vertical_scaled_score = as.numeric(vertical_scaled_score),
+    type = "Math",
+    type_of_teacher_certification = type_of_certification
   )
 
 combined <- bind_rows(read, math) |> 
@@ -54,7 +56,13 @@ ggplot(aes(x = teacher_years_experience, y = race, fill = race)) +
     fontface = "bold"
   ) + 
   scale_fill_brewer(palette="Set2") +
-  theme(legend.position = "none")
+  theme(
+    legend.position = "none",
+    plot.title.position = 'plot',
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
 
 
 combined |> 
@@ -69,19 +77,69 @@ combined |>
   gt()
 
 combined |> 
+  filter(
+    type == "Math"
+  ) |>
   summarize(
     Count = n(),
     .by = c(type_of_teacher_certification, race)
-  ) |> ggplot(aes(x = race, y = type_of_teacher_certification, fill = Count, label = Count)) +
-  geom_tile() +
+  ) |> 
+  mutate(
+    Prop = round(Count / sum(Count), 3) * 100,
+    .by = "race"
+  ) |> 
+  ggplot(aes(x = race, y = type_of_teacher_certification, fill = Count, label = Count)) +
+  geom_tile(color = "black") +
+  theme_classic() +
   # scale_fill_gradient(low = "pink", high = "red") +
   scale_fill_gradient2(low = "white", mid = "pink", high = "Red") +
-  geom_text() +
-  theme_classic() +
+  geom_text(aes(label = paste0("Proportion of \n Race: ", Prop, "%"), fontface = "bold")) +
   labs(
     x = "Student Race", 
     y = "Teacher Certification", 
-    title = "Count of Student Race with Teacher Certification"
+    title = "Student Race with Teacher Certification",
+    subtitle = "Data: Math Dataset"
+  ) +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.subtitle = element_text(face = "bold", hjust = .5),
+    legend.title = element_text(face = "bold")
+  )
+
+combined |> 
+  filter(
+    type == "Reading"
+  ) |>
+  summarize(
+    Count = n(),
+    .by = c(type_of_teacher_certification, race)
+  ) |> 
+  mutate(
+    Prop = round(Count / sum(Count), 3) * 100,
+    .by = "race"
+  ) |> 
+  ggplot(aes(x = race, y = type_of_teacher_certification, fill = Count, label = Count)) +
+  geom_tile(color = "black") +
+  theme_classic() +
+  # scale_fill_gradient(low = "pink", high = "red") +
+  scale_fill_gradient2(low = "white", mid = "pink", high = "Red") +
+  geom_text(aes(label = paste0("Proportion of \n Race: ", Prop, "%"), fontface = "bold")) +
+  labs(
+    x = "Student Race", 
+    y = "Teacher Certification", 
+    title = "Student Race with Teacher Certification",
+    subtitle = "Data: Reading Dataset"
+  ) +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.subtitle = element_text(face = "bold", hjust = .5),
+    legend.title = element_text(face = "bold")
   )
 
 p1 <- combined |> 
@@ -123,10 +181,13 @@ p2 <- combined |>
 
 p1 + p2 + plot_layout(
   guides = "collect"
+  ) + plot_annotation(
+    title = "Expected and Actual Achievement by Race and Gender"
   ) & 
   theme(
     legend.position = "bottom",
-    legend.direction = 'horizontal'
+    legend.direction = 'horizontal',
+    plot.title.position = 'plot',
+    plot.title = element_text(hjust = 0.5, face = "bold")
   ) 
-  
   
